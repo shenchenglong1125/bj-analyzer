@@ -51,15 +51,14 @@ class VideoAnalyzer:
             logger.error(f"不支持的检测器类型: {detector_type}")
             raise ValueError(f"不支持的检测器类型: {detector_type}")
     
-    def process_single_file(self, video_path: str, output_file: str = "", use_streaming: bool = False, 
-                          use_adaptive: bool = False, save_segments: bool = False) -> bool:
+    def process_single_file(self, video_path: str, output_file: str = "", 
+                           use_adaptive: bool = False, save_segments: bool = False) -> bool:
         """
         处理单个视频文件
         
         Args:
             video_path: 视频文件路径
             output_file: 输出文件路径
-            use_streaming: 是否使用流式处理
             use_adaptive: 是否使用自适应处理
             save_segments: 是否保存分屏片段
             
@@ -73,8 +72,6 @@ class VideoAnalyzer:
             if use_adaptive:
                 # 使用自适应处理器
                 result = self.adaptive_processor.process_video(video_path)
-            elif use_streaming:
-                result = self.video_processor.process_video_streaming(video_path)
             else:
                 result = self.video_processor.process_video(video_path)
             
@@ -286,7 +283,6 @@ def main():
     parser.add_argument("--enable-parallel", action="store_true", help="启用并行处理")
     parser.add_argument("--max-workers", type=int, help="最大工作线程数")
     parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="日志级别")
-    parser.add_argument("--streaming", action="store_true", help="使用流式处理（推荐用于大文件）")
     parser.add_argument("--adaptive", action="store_true", help="使用自适应抽帧处理（推荐用于优化速度）")
     
     parser.add_argument("--save-segments", action="store_true", help="保存检测到的分屏片段到output目录")
@@ -329,7 +325,7 @@ def main():
         
         if input_path.is_file():
             # 处理单个文件
-            success = analyzer.process_single_file(args.input, args.output, args.streaming, args.adaptive, args.save_segments)
+            success = analyzer.process_single_file(args.input, args.output, args.adaptive, args.save_segments)
         else:
             # 处理目录
             success = analyzer.process_directory(args.input, args.output, args.adaptive, args.save_segments)

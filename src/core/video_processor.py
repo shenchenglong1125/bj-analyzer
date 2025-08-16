@@ -328,8 +328,6 @@ class VideoProcessor:
             'total_processing_time': result.total_processing_time,
             'processing_status': result.processing_status
         }
-
-    def process_video_streaming(self, video_path: str, show_progress: bool = True) -> ProcessingResult:
         """
         流式处理视频文件（优化版本）
         
