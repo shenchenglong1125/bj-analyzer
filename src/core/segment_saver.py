@@ -25,8 +25,8 @@ class SegmentSaver:
         FileUtils.ensure_directory(output_dir)
     
     def save_split_screen_segments(self, video_path: str, video_info: VideoInfo, 
-                                 segments: List[DetectionResult], 
-                                 min_duration: float = 1.0) -> Dict[str, Any]:
+                                  segments: List[DetectionResult], 
+                                  min_duration: float = 1.0) -> Dict[str, Any]:
         """
         保存分屏片段（基于状态转换的精确提取）
         
@@ -71,12 +71,29 @@ class SegmentSaver:
                 'processing_time': time.time() - start_time
             }
         
-        self.logger.info(f"开始保存 {len(valid_segments)} 个精确分屏片段")
-        
         # 创建视频专属输出目录
         video_name = Path(video_info.file_name).stem
         video_output_dir = os.path.join(self.output_dir, video_name)
+        
+        # 检查是否已经处理过（输出目录存在且包含片段文件）
+        if os.path.exists(video_output_dir):
+            existing_files = [f for f in os.listdir(video_output_dir) if f.endswith('.mp4') and f.startswith('ss_')]
+            if existing_files:
+                self.logger.info(f"检测到已处理的文件: {video_info.file_name}，跳过处理")
+                self.logger.info(f"已存在的片段: {len(existing_files)} 个")
+                return {
+                    'total_segments': len(valid_segments),
+                    'saved_segments': len(existing_files),
+                    'failed_segments': 0,
+                    'total_duration': sum(s['end'] - s['start'] for s in valid_segments),
+                    'processing_time': time.time() - start_time,
+                    'output_directory': video_output_dir,
+                    'skipped': True
+                }
+        
         FileUtils.ensure_directory(video_output_dir)
+        
+        self.logger.info(f"开始保存 {len(valid_segments)} 个精确分屏片段")
         
         saved_count = 0
         failed_count = 0

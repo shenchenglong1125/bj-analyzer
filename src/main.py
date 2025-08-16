@@ -94,7 +94,10 @@ class VideoAnalyzer:
                             min_duration=min_save_duration
                         )
                         
-                        logger.info(f"切片保存完成，共保存 {save_result['saved_segments']} 个片段")
+                        if save_result.get('skipped', False):
+                            logger.info(f"跳过已处理的文件，已存在 {save_result['saved_segments']} 个片段")
+                        else:
+                            logger.info(f"切片保存完成，共保存 {save_result['saved_segments']} 个片段")
                     
                     return True
                 else:
@@ -193,7 +196,10 @@ class VideoAnalyzer:
                             min_duration=min_save_duration
                         )
                         
-                        logger.info(f"{result.video_info.file_name} 切片保存完成，共保存 {save_result['saved_segments']} 个片段")
+                        if save_result.get('skipped', False):
+                            logger.info(f"{result.video_info.file_name} 跳过已处理的文件，已存在 {save_result['saved_segments']} 个片段")
+                        else:
+                            logger.info(f"{result.video_info.file_name} 切片保存完成，共保存 {save_result['saved_segments']} 个片段")
                 else:
                     batch_result.failed_files += 1
                     logger.error(f"处理失败: {result.video_info.file_name}")
