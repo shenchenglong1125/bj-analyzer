@@ -1,0 +1,7 @@
+opencv-python>=4.8.0
+numpy>=1.24.0
+PyYAML>=6.0
+tqdm>=4.65.0
+ffmpeg-python>=0.2.0
+# 可选依赖（用于更好的检测效果）
+# mediapipe>=0.10.0

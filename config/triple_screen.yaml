@@ -1,0 +1,37 @@
+# 三联屏检测器配置
+detector_config:
+  detector_type: "triple_screen_detector"
+  similarity_threshold: 0.85  # 相似度阈值
+  method: "histogram"  # 检测方法: histogram, orb, template
+  min_region_size: 100  # 最小区域尺寸
+
+# 处理配置
+segment_duration: 5.0  # 片段时长（秒）- 缩短以提高速度
+detection_interval: 0.5  # 检测间隔（秒）
+enable_early_stop: true  # 启用提前终止
+
+# 片段处理配置
+min_duration: 5.0  # 最小片段时长（秒）
+merge_threshold: 0.0  # 合并阈值（秒）- 测试设置为0，不合并任何片段
+
+# 保存配置
+save_config:
+  min_save_duration: 10.0  # 最小保存时长（秒）
+  use_copy_mode: true  # 优先使用复制模式
+  enable_reencode_fallback: true  # 启用重新编码备用方案
+
+# 输出配置
+output_path: "output"
+log_level: "INFO"
+
+# 自适应配置 - 使用原来的抽帧间隔序列
+adaptive:
+  initial_interval: 0.5  # 初始抽帧间隔（秒）
+  max_interval: 16.0  # 最大抽帧间隔（秒）- 调整为16秒以提高精确度
+  interval_multiplier: 2.0  # 间隔倍数
+  min_interval: 0.5  # 最小抽帧间隔（秒）
+  precision_mode_interval: 0.5  # 精确模式间隔（秒）
+
+# 性能配置
+max_workers: 4  # 减少线程数以避免资源竞争
+enable_parallel: false  # 默认使用单线程模式
