@@ -205,6 +205,14 @@ class TwoStageProcessor:
         
         self.logger.info(f"第一阶段完成：检测到 {len(triple_screen_segments)} 个三联屏片段")
         
+        # 合并相邻的三联屏片段（间隔≤15秒）
+        merged_triple_screen_segments = self._merge_triple_screen_segments(triple_screen_segments, max_gap=15.0)
+        
+        if len(merged_triple_screen_segments) != len(triple_screen_segments):
+            self.logger.info(f"三联屏片段合并：从 {len(triple_screen_segments)} 个合并为 {len(merged_triple_screen_segments)} 个")
+        
+        triple_screen_segments = merged_triple_screen_segments
+        
         # 第二阶段：下半身检测
         # 先预处理下半身检测器的全局平均直方图（只计算一阶段阴性时间段）
         self._preprocess_lower_body_histogram(video_path, video_info, triple_screen_segments)
@@ -648,6 +656,41 @@ class TwoStageProcessor:
                 if hasattr(current, 'is_lower_body') or hasattr(next_segment, 'is_lower_body'):
                     current.is_lower_body = True
             else:
+                merged.append(current)
+                current = next_segment
+        
+        merged.append(current)
+        return merged
+    
+    def _merge_triple_screen_segments(self, segments: List[DetectionResult], max_gap: float = 15.0) -> List[DetectionResult]:
+        """合并相邻的三联屏片段（间隔≤max_gap秒）"""
+        if not segments:
+            return []
+        
+        # 按时间排序
+        sorted_segments = sorted(segments, key=lambda x: x.segment_start)
+        
+        merged = []
+        current = sorted_segments[0]
+        
+        for next_segment in sorted_segments[1:]:
+            # 计算两个片段之间的间隔
+            gap = next_segment.segment_start - current.segment_end
+            
+            if gap <= max_gap:
+                # 间隔小于等于阈值，合并片段
+                self.logger.debug(f"合并三联屏片段: {current.segment_start:.1f}s-{current.segment_end:.1f}s + {next_segment.segment_start:.1f}s-{next_segment.segment_end:.1f}s (间隔={gap:.1f}s)")
+                
+                current = DetectionResult(
+                    segment_start=current.segment_start,
+                    segment_end=next_segment.segment_end,
+                    is_split_screen=current.is_split_screen,
+                    confidence=max(current.confidence, next_segment.confidence),
+                    detection_frames=current.detection_frames + next_segment.detection_frames,
+                    processing_time=current.processing_time + next_segment.processing_time
+                )
+            else:
+                # 间隔大于阈值，不合并
                 merged.append(current)
                 current = next_segment
         
