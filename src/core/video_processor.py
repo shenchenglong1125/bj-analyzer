@@ -329,7 +329,7 @@ class VideoProcessor:
             'processing_status': result.processing_status
         }
         """
-        流式处理视频文件（优化版本）
+        处理视频文件（重构版本）
         
         Args:
             video_path: 视频文件路径
@@ -349,59 +349,20 @@ class VideoProcessor:
                 error_message="无法获取视频信息"
             )
         
-        # 计算片段
-        segment_duration = self.detector.config.segment_duration
-        detection_interval = self.detector.config.detection_interval
-        
-        self.logger.info(f"开始流式处理视频: {video_info.file_name}")
+        self.logger.info(f"开始处理视频: {video_info.file_name}")
         self.logger.info(f"视频信息: 时长={video_info.duration:.2f}s, 帧率={video_info.fps:.2f}, 分辨率={video_info.width}x{video_info.height}")
-        self.logger.info(f"配置信息: 片段时长={segment_duration}s, 检测间隔={detection_interval}s, 跳帧间隔={int(video_info.fps * detection_interval)}帧")
-        segments = []
-        
-        current_time = 0.0
-        total_segments = 0
-        split_screen_segments = 0
-        
-        # 创建进度条
-        if show_progress:
-            total_segments_estimate = int(video_info.duration / segment_duration) + 1
-            pbar = tqdm(total=total_segments_estimate, desc=f"流式处理 {video_info.file_name}")
         
         try:
-            cap = cv2.VideoCapture(video_path)
-            if not cap.isOpened():
-                raise Exception("无法打开视频文件")
-            
-            fps = cap.get(cv2.CAP_PROP_FPS)
-            if fps <= 0:
-                raise Exception("无效的帧率")
-            
-            while current_time < video_info.duration:
-                segment_start = current_time
-                segment_end = min(current_time + segment_duration, video_info.duration)
-                
-                # 流式处理片段
-                result = self._process_segment_streaming(cap, segment_start, segment_end, fps, detection_interval)
-                segments.append(result)
-                
-                if result.is_split_screen:
-                    split_screen_segments += 1
-                    self.logger.debug(f"检测到分屏片段: {segment_start:.2f}s - {segment_end:.2f}s")
-                
-                total_segments += 1
-                current_time = segment_end
-                
-                if show_progress:
-                    pbar.update(1)
-            
-            cap.release()
-            
-            if show_progress:
-                pbar.close()
+            # 直接调用检测器的视频处理方法
+            segments = self.detector.process_video_segments(video_path, video_info)
             
             processing_time = time.time() - start_time
             
-            self.logger.info(f"流式处理完成: {video_info.file_name}")
+            # 统计分屏片段数量
+            split_screen_segments = len([s for s in segments if s.is_split_screen])
+            total_segments = len(segments)
+            
+            self.logger.info(f"视频处理完成: {video_info.file_name}")
             self.logger.info(f"处理统计: 总片段={total_segments}, 分屏片段={split_screen_segments}, 处理时间={processing_time:.2f}s")
             
             return ProcessingResult(
@@ -414,95 +375,16 @@ class VideoProcessor:
             )
         
         except Exception as e:
-            self.logger.error(f"流式处理视频失败 {video_path}: {e}")
-            if show_progress:
-                pbar.close()
-            if 'cap' in locals():
-                cap.release()
+            self.logger.error(f"处理视频失败 {video_path}: {e}")
             
             return ProcessingResult(
                 video_info=video_info,
-                segments=segments,
+                segments=[],
                 total_processing_time=time.time() - start_time,
-                total_segments=total_segments,
-                split_screen_segments=split_screen_segments,
+                total_segments=0,
+                split_screen_segments=0,
                 processing_status="failed",
                 error_message=str(e)
             )
     
-    def _process_segment_streaming(self, cap, segment_start: float, segment_end: float, fps: float, detection_interval: float) -> DetectionResult:
-        """
-        流式处理单个片段
-        
-        Args:
-            cap: 视频捕获对象
-            segment_start: 片段开始时间
-            segment_end: 片段结束时间
-            fps: 帧率
-            detection_interval: 检测间隔
-            
-        Returns:
-            检测结果
-        """
-        import time
-        start_time = time.time()
-        
-        detection_frames = 0
-        total_confidence = 0.0
-        is_split = False
-        
-        # 计算检测帧的间隔（真正的跳帧处理）
-        interval_frames = max(1, int(fps * detection_interval))
-        
-        # 设置起始帧
-        start_frame = int(segment_start * fps)
-        end_frame = int(segment_end * fps)
-        
-        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-        
-        # 真正的跳帧处理：只读取需要检测的帧
-        current_frame = start_frame
-        while current_frame < end_frame:
-            # 设置到指定帧位置
-            cap.set(cv2.CAP_PROP_POS_FRAMES, current_frame)
-            ret, frame = cap.read()
-            if not ret:
-                break
-            
-            try:
-                result = self.detector.detect_frame(frame)
-                detection_frames += 1
-                
-                if result:
-                    confidence = result.get('confidence', 0.0)
-                    total_confidence += confidence
-                    
-                    # 判断是否为分屏
-                    if self.detector.is_split_screen(result):
-                        is_split = True
-                        
-                        # 如果启用提前终止，检测到分屏后立即停止
-                        if self.detector.config.enable_early_stop:
-                            self.logger.debug(f"检测到分屏，提前终止片段处理")
-                            break
-            
-            except Exception as e:
-                self.logger.error(f"处理帧失败: {e}")
-                continue
-            
-            # 跳到下一帧
-            current_frame += interval_frames
-        
-        processing_time = time.time() - start_time
-        
-        # 计算平均置信度
-        avg_confidence = total_confidence / max(detection_frames, 1)
-        
-        return DetectionResult(
-            segment_start=segment_start,
-            segment_end=segment_end,
-            is_split_screen=is_split,
-            confidence=avg_confidence,
-            detection_frames=detection_frames,
-            processing_time=processing_time
-        )
+

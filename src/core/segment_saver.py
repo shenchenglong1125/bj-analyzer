@@ -28,12 +28,12 @@ class SegmentSaver:
                                   segments: List[DetectionResult], 
                                   min_duration: float = 1.0) -> Dict[str, Any]:
         """
-        保存分屏片段（基于状态转换的精确提取）
+        保存分屏片段（重构版本 - 只负责保存）
         
         Args:
             video_path: 原始视频路径
             video_info: 视频信息
-            segments: 检测结果片段列表
+            segments: 检测结果片段列表（已经过检测器处理）
             min_duration: 最小保存时长（秒）
             
         Returns:
@@ -54,12 +54,9 @@ class SegmentSaver:
                 'processing_time': time.time() - start_time
             }
         
-        # 使用新的基于状态转换的片段提取
-        precise_segments = self._extract_precise_segments(segments, video_info.duration)
-        
         # 过滤掉太短的片段
-        valid_segments = [s for s in precise_segments 
-                         if (s['end'] - s['start']) >= min_duration]
+        valid_segments = [s for s in split_screen_segments 
+                         if (s.segment_end - s.segment_start) >= min_duration]
         
         if not valid_segments:
             self.logger.info("没有找到符合条件的分屏片段")
@@ -75,25 +72,26 @@ class SegmentSaver:
         video_name = Path(video_info.file_name).stem
         video_output_dir = os.path.join(self.output_dir, video_name)
         
+        # 暂时关闭重复检测功能
         # 检查是否已经处理过（输出目录存在且包含片段文件）
-        if os.path.exists(video_output_dir):
-            existing_files = [f for f in os.listdir(video_output_dir) if f.endswith('.mp4') and f.startswith('ss_')]
-            if existing_files:
-                self.logger.info(f"检测到已处理的文件: {video_info.file_name}，跳过处理")
-                self.logger.info(f"已存在的片段: {len(existing_files)} 个")
-                return {
-                    'total_segments': len(valid_segments),
-                    'saved_segments': len(existing_files),
-                    'failed_segments': 0,
-                    'total_duration': sum(s['end'] - s['start'] for s in valid_segments),
-                    'processing_time': time.time() - start_time,
-                    'output_directory': video_output_dir,
-                    'skipped': True
-                }
+        # if os.path.exists(video_output_dir):
+        #     existing_files = [f for f in os.listdir(video_output_dir) if f.endswith('.mp4') and f.startswith('ss_')]
+        #     if existing_files:
+        #         self.logger.info(f"检测到已处理的文件: {video_info.file_name}，跳过处理")
+        #         self.logger.info(f"已存在的片段: {len(existing_files)} 个")
+        #         return {
+        #             'total_segments': len(valid_segments),
+        #             'saved_segments': len(existing_files),
+        #             'failed_segments': 0,
+        #             'total_duration': sum(s.segment_end - s.segment_start for s in valid_segments),
+        #             'processing_time': time.time() - start_time,
+        #             'output_directory': video_output_dir,
+        #             'skipped': True
+        #         }
         
         FileUtils.ensure_directory(video_output_dir)
         
-        self.logger.info(f"开始保存 {len(valid_segments)} 个精确分屏片段")
+        self.logger.info(f"开始保存 {len(valid_segments)} 个分屏片段")
         
         saved_count = 0
         failed_count = 0
@@ -102,19 +100,19 @@ class SegmentSaver:
         for i, segment in enumerate(valid_segments):
             try:
                 # 生成输出文件名
-                output_filename = f"ss_{i+1:03d}_{segment['start']:.1f}s-{segment['end']:.1f}s.mp4"
+                output_filename = f"ss_{i+1:03d}_{segment.segment_start:.1f}s-{segment.segment_end:.1f}s.mp4"
                 output_path = os.path.join(video_output_dir, output_filename)
                 
                 # 使用ffmpeg提取片段
                 success = self._extract_segment_with_ffmpeg(
                     video_path, output_path, 
-                    segment['start'], segment['end']
+                    segment.segment_start, segment.segment_end
                 )
                 
                 if success:
                     saved_count += 1
-                    total_duration += (segment['end'] - segment['start'])
-                    self.logger.info(f"保存片段 {i+1}: {output_filename} (时长: {segment['end'] - segment['start']:.1f}s)")
+                    total_duration += (segment.segment_end - segment.segment_start)
+                    self.logger.info(f"保存片段 {i+1}: {output_filename} (时长: {segment.segment_end - segment.segment_start:.1f}s)")
                 else:
                     failed_count += 1
                     self.logger.error(f"保存片段 {i+1} 失败")
@@ -139,107 +137,7 @@ class SegmentSaver:
         
         return result
     
-    def _extract_precise_segments(self, segments: List[DetectionResult], 
-                                video_duration: float) -> List[Dict[str, float]]:
-        """
-        基于状态转换的精确片段提取
-        
-        Args:
-            segments: 所有检测结果片段列表（按时间排序）
-            video_duration: 视频总时长
-            
-        Returns:
-            精确的片段列表
-        """
-        if not segments:
-            return []
-        
-        # 按时间排序
-        sorted_segments = sorted(segments, key=lambda x: x.segment_start)
-        
-        precise_segments = []
-        current_segment = None
-        
-        for i, segment in enumerate(sorted_segments):
-            if segment.is_split_screen:
-                # 检测到分屏状态
-                if current_segment is None:
-                    # 开始新的分屏片段
-                    # 如果有前一个片段，用前一个片段的开始时间作为当前片段的开始
-                    if i > 0:
-                        start_time = sorted_segments[i-1].segment_start
-                    else:
-                        start_time = 0.0
-                    
-                    current_segment = {
-                        'start': start_time,
-                        'end': segment.segment_end
-                    }
-                else:
-                    # 继续当前分屏片段，更新结束时间
-                    current_segment['end'] = segment.segment_end
-            else:
-                # 检测到单屏状态
-                if current_segment is not None:
-                    # 分屏转单屏，结束当前分屏片段
-                    # 用当前片段的开始时间作为分屏片段的结束时间
-                    current_segment['end'] = segment.segment_start
-                    precise_segments.append(current_segment)
-                    current_segment = None
-        
-        # 处理最后一个分屏片段（如果视频以分屏结束）
-        if current_segment is not None:
-            # 如果最后一个片段是分屏，用视频结束时间作为结束
-            current_segment['end'] = video_duration
-            precise_segments.append(current_segment)
-        
-        # 合并相邻的片段（如果间隔很小）
-        merged_segments = self._merge_adjacent_precise_segments(precise_segments)
-        
-        self.logger.info(f"精确片段提取: 原始片段 {len(precise_segments)} 个，合并后 {len(merged_segments)} 个")
-        
-        return merged_segments
-    
-    def _merge_adjacent_precise_segments(self, segments: List[Dict[str, float]], 
-                                       merge_threshold: float = 5.0) -> List[Dict[str, float]]:
-        """
-        合并相邻的精确片段
-        
-        Args:
-            segments: 精确片段列表
-            merge_threshold: 合并阈值（秒）
-            
-        Returns:
-            合并后的片段列表
-        """
-        if not segments:
-            return []
-        
-        merged = []
-        current_start = segments[0]['start']
-        current_end = segments[0]['end']
-        
-        for segment in segments[1:]:
-            # 如果当前片段与下一个片段间隔小于阈值，则合并
-            if segment['start'] - current_end <= merge_threshold:
-                current_end = segment['end']
-            else:
-                # 保存当前合并的片段
-                merged.append({
-                    'start': current_start,
-                    'end': current_end
-                })
-                # 开始新的片段
-                current_start = segment['start']
-                current_end = segment['end']
-        
-        # 添加最后一个片段
-        merged.append({
-            'start': current_start,
-            'end': current_end
-        })
-        
-        return merged
+
     
     def _extract_segment_with_ffmpeg(self, input_path: str, output_path: str, 
                                    start_time: float, end_time: float) -> bool:

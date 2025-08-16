@@ -1,0 +1,60 @@
+# 下半身检测器配置
+detector_config:
+  detector_type: "lower_body_detector"
+  segment_duration: 5.0  # 片段时长（秒）
+  detection_interval: 0.5  # 检测间隔（秒）
+  confidence_threshold: 0.5  # 置信度阈值
+  enable_early_stop: true  # 启用提前终止
+
+# 检测区域配置
+roi_config:
+  horizontal_start: 0.25  # 左右1/4
+  horizontal_end: 0.75    # 左右3/4
+  vertical_start: 0.5     # 上下1/2
+  vertical_end: 1.0       # 底部
+
+# 直方图检测配置
+histogram_config:
+  sample_interval: 30     # 采样间隔（帧）
+  comparison_method: "correlation"  # 比较方法: correlation, chi_square, intersection
+  threshold: 0.3          # 直方图变化阈值
+  bins: 32               # 直方图bin数量
+  channels: [0, 1, 2]    # 检测的通道 (BGR)
+
+# MediaPipe配置
+mediapipe_config:
+  confidence_threshold: 0.7  # 置信度阈值
+  min_detection_confidence: 0.5
+  min_tracking_confidence: 0.5
+  enable_buttocks_detection: true
+
+# 时序验证配置
+temporal_config:
+  min_consecutive_frames: 3  # 最少连续检测帧数
+  max_gap_frames: 5         # 最大间隔帧数
+
+# 片段处理配置
+min_duration: 5.0  # 最小片段时长（秒）
+merge_threshold: 0.0  # 合并阈值（秒）
+
+# 保存配置
+save_config:
+  min_save_duration: 10.0  # 最小保存时长（秒）
+  use_copy_mode: true  # 优先使用复制模式
+  enable_reencode_fallback: true  # 启用重新编码备用方案
+
+# 输出配置
+output_path: "output"
+log_level: "INFO"
+
+# 自适应配置
+adaptive:
+  initial_interval: 0.1  # 初始抽帧间隔（秒）
+  max_interval: 32.0  # 最大抽帧间隔（秒）
+  min_interval: 0.1  # 最小抽帧间隔（秒）
+  precision_mode_interval: 0.1  # 精确模式间隔（秒）
+  interval_multiplier: 2.0  # 间隔倍数
+
+# 性能配置
+max_workers: 4
+enable_parallel: false

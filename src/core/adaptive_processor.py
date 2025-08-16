@@ -14,7 +14,7 @@ from ..models.data_models import (
     VideoInfo, ProcessingResult, DetectionResult, 
     ProcessingConfig, AdaptiveConfig
 )
-from ..detectors.triple_screen_detector import TripleScreenDetector
+from ..detectors import create_detector
 from ..utils.file_utils import FileUtils
 from ..utils.logger import get_logger
 
@@ -27,11 +27,14 @@ class AdaptiveProcessor:
     def __init__(self, config: ProcessingConfig):
         self.config = config
         self.adaptive_config = config.adaptive_config
-        self.detector = TripleScreenDetector(config.detector_config)
+        self.detector = create_detector(config.detector_config.detector_type, config.detector_config)
         self.logger = logger
         
         # 生成抽帧间隔序列
         self.frame_intervals = self._generate_frame_intervals()
+        self.logger.info(f"自适应配置: initial_interval={self.adaptive_config.initial_interval}, "
+                        f"max_interval={self.adaptive_config.max_interval}, "
+                        f"interval_multiplier={self.adaptive_config.interval_multiplier}")
         self.logger.info(f"抽帧间隔序列: {self.frame_intervals}")
     
     def _generate_frame_intervals(self) -> List[float]:
@@ -140,8 +143,8 @@ class AdaptiveProcessor:
                 if result is None:
                     break
                 
-                # 获取检测结果
-                is_split_screen = result.get('is_triple_screen', False)
+                # 获取检测结果 - 支持不同的检测器字段
+                is_split_screen = result.get('is_triple_screen', result.get('is_lower_body_detected', False))
                 confidence = result.get('confidence', 0.0)
                 
                 # 状态变化检测
@@ -364,7 +367,7 @@ class AdaptiveProcessor:
             result = self.detector.detect_frame(frame)
             detection_frames += 1
             
-            if result and result.get('is_triple_screen', False):
+            if result and (result.get('is_triple_screen', False) or result.get('is_lower_body_detected', False)):
                 split_screen_count += 1
                 total_confidence += result.get('confidence', 0.0)
             
